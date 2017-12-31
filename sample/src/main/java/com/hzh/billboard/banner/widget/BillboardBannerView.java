@@ -5,6 +5,8 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.AttributeSet;
@@ -13,6 +15,9 @@ import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.LinearInterpolator;
 import android.widget.LinearLayout;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Package: com.hzh.billboard.banner.widget
@@ -43,7 +48,12 @@ public class BillboardBannerView extends LinearLayout {
     /**
      * 滚动时间，默认是10秒，示例中是TextView，时间应该是拿到文字的总字符数，乘以每个字符移动的距离，计算出总时间
      */
-    private int mDuration = 1000 * 10;
+    private long mDuration = 1000 * 10;
+    /**
+     * 动画集合
+     */
+    List<Animator> animators = new ArrayList<Animator>();
+    private Handler mMainHandler;
 
     //private Scroller mScroller;
 
@@ -63,6 +73,7 @@ public class BillboardBannerView extends LinearLayout {
     }
 
     private void init() {
+        mMainHandler = new Handler(Looper.getMainLooper());
         //开启绘制自身，这样才会回调onDraw函数
         setWillNotDraw(false);
         //设置横向排列，这里因为我们只允许一个子View，所以横向竖线都是一样的，如果不设置默认也是横向
@@ -95,14 +106,39 @@ public class BillboardBannerView extends LinearLayout {
 //        }
 //    }
 
-
-    public void setDuration(int duration) {
+    /**
+     * 配置告示条，暂时只配置了时间
+     *
+     * @param duration 滚动时间
+     */
+    public void config(long duration) {
+        //重新设置时间
         this.mDuration = duration;
+        //如果之前有动画，先显示渐变动画，结束后，清除所有动画
         if (animatorSet != null && animatorSet.isRunning()) {
-            animatorSet.cancel();
+            ValueAnimator finalHideAnimator = getHideAnimator();
+            finalHideAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationStart(Animator animation) {
+                    super.onAnimationStart(animation);
+                    mContentView.setTranslationX(screenWidth);
+                    //终止所有动画
+                    animatorSet.cancel();
+                    for (Animator animator : animators) {
+                        animator.cancel();
+                    }
+                }
+
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    super.onAnimationEnd(animation);
+                    startScroll();
+                }
+            });
+            finalHideAnimator.start();
+        } else {
+            startScroll();
         }
-        //重新开始动画
-        startScroll();
     }
 
     @Override
@@ -115,11 +151,17 @@ public class BillboardBannerView extends LinearLayout {
         }
         //获取滚动内容View
         mContentView = getChildAt(0);
-        int w = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
-        int h = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
-        mContentView.measure(w, h);
-        //获取需要滚动的View的宽
-        maxScrollViewWidth = mContentView.getMeasuredWidth();
+    }
+
+    private float getContentViewWidth() {
+        if (mContentView != null) {
+            int w = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            int h = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            mContentView.measure(w, h);
+            //获取需要滚动的View的宽
+            return mContentView.getMeasuredWidth();
+        }
+        return 0;
     }
 
     /**
@@ -133,18 +175,23 @@ public class BillboardBannerView extends LinearLayout {
             public void onAnimationStart(Animator animation) {
                 super.onAnimationStart(animation);
                 //一开始先隐藏告示条
-                if (getAlpha() != 0) {
-                    BillboardBannerView.this.setAlpha(0f);
-                    //设置默认位置，将内容View移动到屏幕外
-                    mContentView.setTranslationX(screenWidth);
-                }
+                BillboardBannerView.this.setAlpha(0f);
+                //设置默认位置，将内容View移动到屏幕外
+                mContentView.setTranslationX(screenWidth);
             }
         });
-        animatorSet.playSequentially(getShowAnimator(), getScrollAnimator(), getHideAnimator());
+        //清除之前的动画，添加新动画
+        animators.clear();
+        animators.add(getShowAnimator());
+        animators.add(getScrollAnimator());
+        animators.add(getHideAnimator());
+        animatorSet.playSequentially(animators);
         animatorSet.start();
     }
 
     private ValueAnimator getScrollAnimator() {
+        //重新设置文本长度
+        maxScrollViewWidth = getContentViewWidth();
         //滚动动画。滚动距离，如果语句比屏幕宽度长，则使用语句长度。如果语句比屏幕宽度短，则使用屏幕宽度
         final float end = Math.max(screenWidth, maxScrollViewWidth);
         final ValueAnimator rollAnimator = ValueAnimator.ofFloat(screenWidth, -end);

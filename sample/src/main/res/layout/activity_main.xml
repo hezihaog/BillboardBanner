@@ -18,7 +18,15 @@
             android:layout_height="match_parent"
             android:gravity="center_vertical"
             android:textColor="#FFFFFF"
-            tools:text="许愿告示...."
-            android:textSize="13sp" />
+            android:textSize="13sp"
+            tools:text="许愿告示...." />
     </com.hzh.billboard.banner.widget.BillboardBannerView>
+
+    <Button
+        android:id="@+id/btn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="10dp"
+        android:layout_marginTop="50dp"
+        android:text="切换文本" />
 </RelativeLayout>
