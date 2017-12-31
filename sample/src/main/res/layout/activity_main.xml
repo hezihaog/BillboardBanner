@@ -9,6 +9,16 @@
     <com.hzh.billboard.banner.widget.BillboardBannerView
         android:id="@+id/bannerView"
         android:layout_width="match_parent"
-        android:layout_height="20dp"
-        android:background="#7F333333" />
+        android:layout_height="25dp"
+        android:background="#7F333333">
+
+        <TextView
+            android:id="@+id/contentView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:textColor="#FFFFFF"
+            tools:text="许愿告示...."
+            android:textSize="13sp" />
+    </com.hzh.billboard.banner.widget.BillboardBannerView>
 </RelativeLayout>

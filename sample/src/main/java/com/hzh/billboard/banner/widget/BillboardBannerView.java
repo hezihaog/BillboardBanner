@@ -5,19 +5,14 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ValueAnimator;
 import android.content.Context;
-import android.graphics.Color;
-import android.os.Handler;
-import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.text.Html;
 import android.util.AttributeSet;
 import android.util.TypedValue;
+import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.LinearInterpolator;
-import android.widget.FrameLayout;
-import android.widget.Scroller;
-import android.widget.TextView;
+import android.widget.LinearLayout;
 
 /**
  * Package: com.hzh.billboard.banner.widget
@@ -28,18 +23,29 @@ import android.widget.TextView;
  * Email: hezihao@linghit.com
  */
 
-public class BillboardBannerView extends FrameLayout {
-    private final int mBackgroundColor = Color.parseColor("#7F333333");
-    private final int mTipTextColor = Color.parseColor("#FFFFFF");
-
+public class BillboardBannerView extends LinearLayout {
+    /**
+     * 屏幕宽度
+     */
     private int screenWidth;
-    private float maxTipTextWidth;
+    /**
+     * 最大滚动的距离，就是内容View的宽度，一开始会先将内容View设置位移到屏幕宽度，后续会从屏幕宽度为起点，到该最大值
+     */
+    private float maxScrollViewWidth;
+    /**
+     * 渐变显示、滚动、渐变消失动画集合
+     */
+    private AnimatorSet animatorSet;
+    /**
+     * 内容View，实例是一个TextView
+     */
+    private View mContentView;
+    /**
+     * 滚动时间，默认是10秒，示例中是TextView，时间应该是拿到文字的总字符数，乘以每个字符移动的距离，计算出总时间
+     */
+    private int mDuration = 1000 * 10;
 
-    private TextView textView;
-    private Handler mainHandler;
-    private Scroller mScroller;
-    private String tipText;
-    private String originText;
+    //private Scroller mScroller;
 
     public BillboardBannerView(@NonNull Context context) {
         super(context);
@@ -57,12 +63,13 @@ public class BillboardBannerView extends FrameLayout {
     }
 
     private void init() {
-        mainHandler = new Handler(Looper.getMainLooper());
+        //开启绘制自身，这样才会回调onDraw函数
+        setWillNotDraw(false);
+        //设置横向排列，这里因为我们只允许一个子View，所以横向竖线都是一样的，如果不设置默认也是横向
+        setOrientation(LinearLayout.HORIZONTAL);
+        //获取屏幕宽度，一开始先将contentView移动到屏幕外层
         screenWidth = getScreenWidth(getContext());
-        //一开始先隐藏告示条
-        this.setAlpha(0f);
 
-//        this.setAlpha(1f);
 //        mScroller = new Scroller(getContext(), new LinearInterpolator());
 //        start2();
     }
@@ -88,45 +95,66 @@ public class BillboardBannerView extends FrameLayout {
 //        }
 //    }
 
-    public void configText(String originText, String tipText) {
-        this.originText = originText;
-        this.tipText = tipText;
-        //添加滚动文字
-        textView = new TextView(getContext());
-        textView.setTextColor(mTipTextColor);
-        textView.setTextSize(sp2px(getContext(), 5f));
-        textView.setText(Html.fromHtml(tipText));
-        float tipTextWidth = textView.getPaint().measureText(originText);
-        maxTipTextWidth = tipTextWidth;
-        LayoutParams textParams = new LayoutParams((int) tipTextWidth, LayoutParams.MATCH_PARENT);
-        addView(textView, textParams);
-        //设置默认位置，将文字移动到屏幕外
-        textView.setTranslationX(screenWidth);
-        //开始动画
+
+    public void setDuration(int duration) {
+        this.mDuration = duration;
+        if (animatorSet != null && animatorSet.isRunning()) {
+            animatorSet.cancel();
+        }
+        //重新开始动画
         startScroll();
+    }
+
+    @Override
+    protected void onFinishInflate() {
+        super.onFinishInflate();
+        int childCount = getChildCount();
+        //只能有一个子View
+        if (childCount > 1) {
+            throw new RuntimeException("只能有一个子View");
+        }
+        //获取滚动内容View
+        mContentView = getChildAt(0);
+        int w = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+        int h = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+        mContentView.measure(w, h);
+        //获取需要滚动的View的宽
+        maxScrollViewWidth = mContentView.getMeasuredWidth();
     }
 
     /**
      * 开始滚动
      */
     private void startScroll() {
-        AnimatorSet set = new AnimatorSet();
-        set.setStartDelay(1000);
-        set.playSequentially(getShowAnimator(), getScrollAnimator(), getHideAnimator());
-        set.start();
+        animatorSet = new AnimatorSet();
+        animatorSet.setStartDelay(1000);
+        animatorSet.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationStart(Animator animation) {
+                super.onAnimationStart(animation);
+                //一开始先隐藏告示条
+                if (getAlpha() != 0) {
+                    BillboardBannerView.this.setAlpha(0f);
+                    //设置默认位置，将内容View移动到屏幕外
+                    mContentView.setTranslationX(screenWidth);
+                }
+            }
+        });
+        animatorSet.playSequentially(getShowAnimator(), getScrollAnimator(), getHideAnimator());
+        animatorSet.start();
     }
 
     private ValueAnimator getScrollAnimator() {
         //滚动动画。滚动距离，如果语句比屏幕宽度长，则使用语句长度。如果语句比屏幕宽度短，则使用屏幕宽度
-        final float end = Math.max(screenWidth, maxTipTextWidth);
+        final float end = Math.max(screenWidth, maxScrollViewWidth);
         final ValueAnimator rollAnimator = ValueAnimator.ofFloat(screenWidth, -end);
         rollAnimator.setInterpolator(new LinearInterpolator());
-        rollAnimator.setDuration(originText.toCharArray().length * 400);
+        rollAnimator.setDuration(mDuration);
         rollAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
                 Float cValue = (Float) animation.getAnimatedValue();
-                textView.setTranslationX(cValue);
+                mContentView.setTranslationX(cValue);
             }
         });
         return rollAnimator;
@@ -167,6 +195,7 @@ public class BillboardBannerView extends FrameLayout {
             @Override
             public void onAnimationEnd(Animator animation) {
                 super.onAnimationEnd(animation);
+                //结束后，重新滚动
                 startScroll();
             }
         });
